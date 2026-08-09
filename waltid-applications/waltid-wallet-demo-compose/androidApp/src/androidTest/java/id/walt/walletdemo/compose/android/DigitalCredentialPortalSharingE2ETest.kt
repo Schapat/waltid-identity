@@ -17,7 +17,9 @@ import id.walt.walletdemo.compose.android.WalletComposeE2EHelper.UI_ELEMENT_TIME
 import id.walt.walletdemo.compose.android.WalletComposeE2EHelper.clickByTag
 import id.walt.walletdemo.compose.android.WalletComposeE2EHelper.launchAndUnlock
 import id.walt.walletdemo.compose.android.WalletComposeE2EHelper.sendDeepLink
+import id.walt.walletdemo.compose.android.WalletComposeE2EHelper.waitForResource
 import id.walt.walletdemo.compose.android.WalletComposeE2EHelper.waitForStatus
+import id.walt.walletdemo.compose.ui.WalletDemoSharingReviewTestTags
 import io.ktor.client.HttpClient
 import io.ktor.client.request.accept
 import io.ktor.client.request.get
@@ -409,13 +411,11 @@ class DigitalCredentialPortalSharingE2ETest {
         assertNotNull("Credential Manager did not offer consent", continueButton)
         continueButton!!.click()
 
-        val shareButton = device.wait(
-            Until.findObject(By.res("android:id/button1")),
-            UI_ELEMENT_TIMEOUT,
-        ) ?: device.wait(Until.findObject(By.text("Share")), UI_ELEMENT_TIMEOUT)
-            ?: device.wait(Until.findObject(By.text("SHARE")), UI_ELEMENT_TIMEOUT)
-        assertNotNull("Wallet provider consent did not open", shareButton)
-        shareButton!!.click()
+        assertNotNull(
+            "Wallet provider review did not open",
+            waitForResource(device, WALLET_SHARING_REVIEW_TAG, UI_ELEMENT_TIMEOUT),
+        )
+        clickByTag(device, WALLET_SHARE_BUTTON_TAG)
     }
 
     /**
@@ -497,6 +497,16 @@ class DigitalCredentialPortalSharingE2ETest {
         const val PORTAL_URL = "https://portal2.test.waltid.cloud/"
         const val PORTAL_ORIGIN = "https://portal2.test.waltid.cloud"
         const val PORTAL_VERIFIER_BASE = "https://verifier2.portal.test.waltid.cloud"
+
+        /**
+         * Compose test tags of the wallet's shared review, exported as Android resource IDs.
+         *
+         * Same tags [DigitalCredentialSharingE2ETest] and the in-app OpenID4VP review are driven by:
+         * the provider surface is the wallet's own review, so this test must not depend on what the
+         * provider Activity happens to render around it.
+         */
+        val WALLET_SHARING_REVIEW_TAG = WalletDemoSharingReviewTestTags.Review
+        val WALLET_SHARE_BUTTON_TAG = WalletDemoSharingReviewTestTags.ShareButton
 
         /** This deployment spells the discriminator `dc_api_openid4vp`, not the branch's `dc_api`. */
         const val FLOW_TYPE = "dc_api_openid4vp"
