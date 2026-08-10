@@ -800,8 +800,8 @@ object WalletIssuanceHandler {
         val offer = resolveOffer(request, httpClient)
         val metadataResolver = IssuerMetadataResolver(httpClient)
         val issuerMetadata = metadataResolver.resolveCredentialIssuerMetadata(offer.credentialIssuer)
-        val asMetadata = metadataResolver.resolveAuthorizationServerMetadataWithFallback(issuerMetadata)
-        val offeredCredentials = OfferedCredentialResolver.resolveOfferedCredentials(offer, issuerMetadata)
+        val asMetadata = metadataResolver.resolveAuthorizationServerMetadataWithFallback(issuerMetadata.metadata)
+        val offeredCredentials = OfferedCredentialResolver.resolveOfferedCredentials(offer, issuerMetadata.metadata)
         return ResolvedIssuanceOffer(
             source = request,
             summary = ResolveOfferResult(
@@ -812,12 +812,12 @@ object WalletIssuanceHandler {
                 preAuthorizedCode = offer.grants?.preAuthorizedCode?.preAuthorizedCode,
                 txCodeRequired = offer.grants?.preAuthorizedCode?.txCode != null,
                 tokenEndpoint = asMetadata.tokenEndpoint?.let { Url(it) },
-                credentialEndpoint = Url(issuerMetadata.credentialEndpoint),
+                credentialEndpoint = Url(issuerMetadata.metadata.credentialEndpoint),
                 offeredCredentials = offeredCredentials.map { it.credentialConfigurationId },
-                nonceEndpoint = issuerMetadata.nonceEndpoint?.let { Url(it) },
+                nonceEndpoint = issuerMetadata.metadata.nonceEndpoint?.let { Url(it) },
             ),
             offer = offer,
-            issuerMetadata = issuerMetadata,
+            issuerMetadata = issuerMetadata.metadata,
             authorizationServerMetadata = asMetadata,
             offeredCredentials = offeredCredentials,
         )
@@ -893,7 +893,7 @@ object WalletIssuanceHandler {
         val asMetadata = credentialIssuer?.let {
             val metadataResolver = IssuerMetadataResolver(httpClient)
             val issuerMetadata = metadataResolver.resolveCredentialIssuerMetadata(it)
-            metadataResolver.resolveAuthorizationServerMetadataWithFallback(issuerMetadata)
+            metadataResolver.resolveAuthorizationServerMetadataWithFallback(issuerMetadata.metadata)
         }
         val attestationHeaders = asMetadata?.let {
             buildTokenEndpointAttestationHeaders(
@@ -953,7 +953,7 @@ object WalletIssuanceHandler {
         return RequestNonceResult(
             nonce = requestProofNonce(
                 httpClient = httpClient,
-                issuerMetadata = issuerMetadata,
+                issuerMetadata = issuerMetadata.metadata,
             )
         )
     }
@@ -968,10 +968,10 @@ object WalletIssuanceHandler {
             ?: error("No key available for signing proof")
         val issuerMetadata = IssuerMetadataResolver(httpClient)
             .resolveCredentialIssuerMetadata(request.issuerUrl.toString())
-        val configuration = issuerMetadata.credentialConfigurationsSupported[request.credentialConfigurationId]
+        val configuration = issuerMetadata.metadata.credentialConfigurationsSupported[request.credentialConfigurationId]
             ?: error(
                 "Unknown credential configuration '${request.credentialConfigurationId}' " +
-                    "for issuer '${issuerMetadata.credentialIssuer}'"
+                    "for issuer '${issuerMetadata.metadata.credentialIssuer}'"
             )
         val acceptedAlgorithms = supportedJwtProofAlgorithms(configuration.proofTypesSupported)
             ?: error(
@@ -982,7 +982,7 @@ object WalletIssuanceHandler {
         val proofs = buildJwtProof(
             proofBuilder = JwtProofBuilder(),
             keyMaterial = keyMaterial,
-            audience = issuerMetadata.credentialIssuer,
+            audience = issuerMetadata.metadata.credentialIssuer,
             nonce = request.nonce,
             did = request.did?.takeUnless { preferJwkBinding },
             acceptedAlgorithms = acceptedAlgorithms,
@@ -1202,7 +1202,7 @@ object WalletIssuanceHandler {
     ): CredentialStorageContext {
         val resolvedIssuerMetadata = issuerMetadata
             ?: credentialIssuerBaseUrl?.let {
-                IssuerMetadataResolver(httpClient).resolveCredentialIssuerMetadata(it)
+                IssuerMetadataResolver(httpClient).resolveCredentialIssuerMetadata(it).metadata
             }
         return CredentialStorageContext(
             label = labelOverride
@@ -1247,7 +1247,7 @@ object WalletIssuanceHandler {
     ): AuthorizationServerMetadata {
         val metadataResolver = IssuerMetadataResolver(httpClient)
         val issuerMetadata = metadataResolver.resolveCredentialIssuerMetadata(credentialIssuerBaseUrl)
-        return metadataResolver.resolveAuthorizationServerMetadataWithFallback(issuerMetadata)
+        return metadataResolver.resolveAuthorizationServerMetadataWithFallback(issuerMetadata.metadata)
     }
 
     private suspend fun postFollowingRedirects(
@@ -1313,7 +1313,7 @@ object WalletIssuanceHandler {
         val offer = resolveOffer(request, httpClient)
         val issuerMetadata = IssuerMetadataResolver(httpClient).resolveCredentialIssuerMetadata(offer.credentialIssuer)
         val asMetadata =
-            IssuerMetadataResolver(httpClient).resolveAuthorizationServerMetadataWithFallback(issuerMetadata)
+            IssuerMetadataResolver(httpClient).resolveAuthorizationServerMetadataWithFallback(issuerMetadata.metadata)
 
         val authorizationEndpoint = asMetadata.authorizationEndpoint
             ?: error("Authorization server has no authorization_endpoint")
@@ -1335,7 +1335,7 @@ object WalletIssuanceHandler {
             codeVerifier = authRequest.pkceData?.codeVerifier,
             credentialConfigurationId = credentialConfigurationId,
             credentialIssuerBaseUrl = offer.credentialIssuer,
-            nonceEndpoint = issuerMetadata.nonceEndpoint?.let { Url(it) },
+            nonceEndpoint = issuerMetadata.metadata.nonceEndpoint?.let { Url(it) },
         )
     }
 
@@ -1542,7 +1542,7 @@ object WalletIssuanceHandler {
 
         // Resolve issuer metadata again at continuation time and use only its advertised nonce endpoint.
         val issuerMetadata = IssuerMetadataResolver(httpClient)
-            .resolveCredentialIssuerMetadata(credentialIssuerBaseUrl)
+            .resolveCredentialIssuerMetadata(credentialIssuerBaseUrl).metadata
         nonceEndpoint?.let { expected ->
             require(expected == issuerMetadata.nonceEndpoint) {
                 "Provided nonce endpoint does not match credential issuer metadata"
