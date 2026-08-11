@@ -1171,8 +1171,8 @@ public struct PresentationRequestContext: Equatable, Sendable {
     /// Typed metadata supplied by the OpenID4VP verifier when available.
     public let verifierMetadata: VerifierMetadata?
 
-    /// Source and signed-request provenance for verifier metadata.
-    public let verifierMetadataProvenance: VerifierMetadataProvenance
+    /// Authentication established for the authorization request or its Request Object.
+    public let requestAuthentication: PresentationRequestAuthentication
 
     /// Response URI used for direct-post responses when available.
     public let responseURI: URL?
@@ -1191,7 +1191,7 @@ public struct PresentationRequestContext: Equatable, Sendable {
     /// - Parameters:
     ///   - clientID: Validated OpenID4VP client identifier from the request.
     ///   - verifierMetadata: Typed metadata supplied by the verifier when available.
-    ///   - verifierMetadataProvenance: Source and signed-request provenance for verifier metadata.
+    ///   - requestAuthentication: Authentication facts established while resolving the request.
     ///   - responseURI: Response URI to which the wallet would submit the presentation or error, when provided.
     ///   - state: OpenID state value from the request, when provided.
     ///   - nonce: OpenID nonce value from the request, when provided. May be nil if the missing nonce is the validation error.
@@ -1199,7 +1199,7 @@ public struct PresentationRequestContext: Equatable, Sendable {
     public init(
         clientID: String,
         verifierMetadata: VerifierMetadata? = nil,
-        verifierMetadataProvenance: VerifierMetadataProvenance,
+        requestAuthentication: PresentationRequestAuthentication,
         responseURI: URL? = nil,
         state: String? = nil,
         nonce: String? = nil,
@@ -1211,7 +1211,7 @@ public struct PresentationRequestContext: Equatable, Sendable {
         )
         self.clientID = clientID
         self.verifierMetadata = verifierMetadata
-        self.verifierMetadataProvenance = verifierMetadataProvenance
+        self.requestAuthentication = requestAuthentication
         self.responseURI = responseURI
         self.state = state
         self.nonce = nonce
@@ -1268,17 +1268,35 @@ public struct ResponseEncryptionDetails: Equatable, Sendable {
     }
 }
 
-/// Provenance of verifier metadata carried by a presentation request.
-public enum VerifierMetadataProvenance: Equatable, Sendable {
-    /// Metadata came from an unsigned request.
-    case unsignedRequest
-    /// Metadata came from a signed request object retained by wallet core.
-    case signedRequest(
+/// Authentication established for an OpenID4VP authorization request.
+public enum PresentationRequestAuthentication: Equatable, Sendable {
+    /// No signed Request Object authenticated this request.
+    case unauthenticated
+    /// The Request Object was authenticated by the OpenID4VP client-ID layer.
+    case authenticated(
         compactRequestObject: String,
         algorithm: String,
         keyID: String?,
-        clientIDPrefix: String
+        clientIDScheme: PresentationClientIDScheme
     )
+}
+
+/// Client identifier scheme established while authenticating a Request Object.
+public enum PresentationClientIDScheme: Equatable, Sendable {
+    /// The verifier is identified through pre-registered metadata.
+    case preRegistered
+    /// The verifier is identified by a redirect URI.
+    case redirectURI
+    /// The verifier is identified by an X.509 SAN DNS name.
+    case x509SanDNS
+    /// The verifier is identified by an X.509 certificate hash.
+    case x509Hash
+    /// The verifier is identified by a decentralized identifier.
+    case decentralizedIdentifier
+    /// The verifier is identified by a verifier attestation.
+    case verifierAttestation
+    /// The verifier is identified through OpenID Federation.
+    case openIDFederation
 }
 
 /// Verifier, transaction, and response-protection metadata extracted from a presentation request.
@@ -1289,8 +1307,8 @@ public struct PresentationRequestInfo: Equatable, Sendable {
     /// Typed metadata supplied by the OpenID4VP verifier when available.
     public let verifierMetadata: VerifierMetadata?
 
-    /// Source and signed-request provenance for verifier metadata.
-    public let verifierMetadataProvenance: VerifierMetadataProvenance
+    /// Authentication established for the authorization request or its Request Object.
+    public let requestAuthentication: PresentationRequestAuthentication
 
     /// Response URI used for direct-post responses when available.
     public let responseURI: URL?
@@ -1312,7 +1330,7 @@ public struct PresentationRequestInfo: Equatable, Sendable {
     /// - Parameters:
     ///   - clientID: OpenID4VP client identifier from the request.
     ///   - verifierMetadata: Typed metadata supplied by the verifier.
-    ///   - verifierMetadataProvenance: Source and signed-request provenance for verifier metadata.
+    ///   - requestAuthentication: Authentication facts established while resolving the request.
     ///   - responseURI: Direct-post response URI when available.
     ///   - state: OpenID state value from the request.
     ///   - nonce: OpenID nonce value from the request.
@@ -1321,7 +1339,7 @@ public struct PresentationRequestInfo: Equatable, Sendable {
     public init(
         clientID: String,
         verifierMetadata: VerifierMetadata? = nil,
-        verifierMetadataProvenance: VerifierMetadataProvenance,
+        requestAuthentication: PresentationRequestAuthentication,
         responseURI: URL? = nil,
         state: String? = nil,
         nonce: String,
@@ -1334,7 +1352,7 @@ public struct PresentationRequestInfo: Equatable, Sendable {
         )
         self.clientID = clientID
         self.verifierMetadata = verifierMetadata
-        self.verifierMetadataProvenance = verifierMetadataProvenance
+        self.requestAuthentication = requestAuthentication
         self.responseURI = responseURI
         self.state = state
         self.nonce = nonce

@@ -850,7 +850,7 @@ private extension MobileWalletPresentationRequestContext {
         PresentationRequestContext(
             clientID: clientId,
             verifierMetadata: verifierMetadata?.toSwiftVerifierMetadata(),
-            verifierMetadataProvenance: verifierMetadataProvenance.toSwiftVerifierMetadataProvenance(),
+            requestAuthentication: requestAuthentication.toSwiftRequestAuthentication(),
             responseURI: responseUri.flatMap(URL.init(string:)),
             state: state,
             nonce: nonce,
@@ -864,7 +864,7 @@ private extension MobileWalletPresentationRequestInfo {
         PresentationRequestInfo(
             clientID: clientId,
             verifierMetadata: verifierMetadata?.toSwiftVerifierMetadata(),
-            verifierMetadataProvenance: verifierMetadataProvenance.toSwiftVerifierMetadataProvenance(),
+            requestAuthentication: requestAuthentication.toSwiftRequestAuthentication(),
             responseURI: responseUri.flatMap(URL.init(string:)),
             state: state,
             nonce: nonce,
@@ -875,20 +875,41 @@ private extension MobileWalletPresentationRequestInfo {
     }
 }
 
-private extension MobileWalletVerifierMetadataProvenance {
-    func toSwiftVerifierMetadataProvenance() -> VerifierMetadataProvenance {
+private extension MobileWalletRequestAuthentication {
+    func toSwiftRequestAuthentication() -> PresentationRequestAuthentication {
         switch self {
-        case is MobileWalletVerifierMetadataProvenanceUnsignedRequest:
-            return .unsignedRequest
-        case let signed as MobileWalletVerifierMetadataProvenanceSignedRequest:
-            return .signedRequest(
-                compactRequestObject: signed.compactRequestObject,
-                algorithm: signed.algorithm,
-                keyID: signed.keyId,
-                clientIDPrefix: signed.clientIdPrefix
+        case is MobileWalletRequestAuthenticationUnauthenticated:
+            return .unauthenticated
+        case let authenticated as MobileWalletRequestAuthenticationAuthenticated:
+            return .authenticated(
+                compactRequestObject: authenticated.compactRequestObject,
+                algorithm: authenticated.algorithm,
+                keyID: authenticated.keyId,
+                clientIDScheme: authenticated.clientIdScheme.toSwiftClientIDScheme()
             )
         default:
-            preconditionFailure("Unsupported verifier metadata provenance: \(type(of: self))")
+            preconditionFailure("Unsupported request authentication: \(type(of: self))")
+        }
+    }
+}
+
+private extension MobileWalletClientIdScheme {
+    func toSwiftClientIDScheme() -> PresentationClientIDScheme {
+        switch self {
+        case .preRegistered:
+            return .preRegistered
+        case .redirectUri:
+            return .redirectURI
+        case .x509SanDns:
+            return .x509SanDNS
+        case .x509Hash:
+            return .x509Hash
+        case .decentralizedIdentifier:
+            return .decentralizedIdentifier
+        case .verifierAttestation:
+            return .verifierAttestation
+        case .openIdFederation:
+            return .openIDFederation
         }
     }
 }

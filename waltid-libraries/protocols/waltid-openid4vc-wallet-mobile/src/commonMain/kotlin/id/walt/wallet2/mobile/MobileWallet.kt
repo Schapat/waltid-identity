@@ -43,10 +43,16 @@ import id.waltid.openid4vci.wallet.attestation.HttpWalletAttestationProvider
 import id.waltid.openid4vp.wallet.WalletPresentFunctionality2
 import id.waltid.openid4vp.wallet.WalletPresentFunctionality2.WalletPresentResult
 import id.walt.openid4vp.clientidprefix.ClientIdTrustConfiguration
+import id.walt.openid4vp.clientidprefix.prefixes.ClientId
+import id.walt.openid4vp.clientidprefix.prefixes.DecentralizedIdentifier
+import id.walt.openid4vp.clientidprefix.prefixes.OpenIdFederation
+import id.walt.openid4vp.clientidprefix.prefixes.PreRegistered
+import id.walt.openid4vp.clientidprefix.prefixes.RedirectUri
+import id.walt.openid4vp.clientidprefix.prefixes.VerifierAttestation
+import id.walt.openid4vp.clientidprefix.prefixes.X509Hash
+import id.walt.openid4vp.clientidprefix.prefixes.X509SanDns
 import id.waltid.openid4vci.wallet.metadata.CredentialIssuerMetadataTrustResolver
 import id.waltid.openid4vp.wallet.request.ResolvedAuthorizationRequest
-import id.walt.crypto.utils.JwsUtils.decodeJws
-import id.walt.openid4vci.tokens.jwt.JwtHeaderParams
 import id.waltid.openid4vp.wallet.response.ResponseEncryption
 import id.waltid.openid4vp.wallet.DcApiCredentialResponse
 import id.waltid.openid4vp.wallet.DcApiWallet
@@ -1010,7 +1016,7 @@ internal fun AuthorizationRequest.toMobileRequestInfo(
     return MobileWalletPresentationRequestInfo(
         clientId = verifiedClientId,
         verifierMetadata = clientMetadata?.toMobileVerifierMetadata(preferredLocales),
-        verifierMetadataProvenance = resolvedAuthorizationRequest.toMobileVerifierMetadataProvenance(verifiedClientId),
+        requestAuthentication = resolvedAuthorizationRequest.toMobileRequestAuthentication(),
         responseUri = responseUri,
         state = state,
         nonce = requireNotNull(nonce) {
@@ -1047,7 +1053,7 @@ internal fun AuthorizationRequest.toMobileRequestContext(
     return MobileWalletPresentationRequestContext(
         clientId = verifiedClientId,
         verifierMetadata = clientMetadata?.toMobileVerifierMetadata(preferredLocales),
-        verifierMetadataProvenance = resolvedAuthorizationRequest.toMobileVerifierMetadataProvenance(verifiedClientId),
+        requestAuthentication = resolvedAuthorizationRequest.toMobileRequestAuthentication(),
         responseUri = responseUri,
         state = state,
         nonce = nonce,
@@ -1055,19 +1061,27 @@ internal fun AuthorizationRequest.toMobileRequestContext(
     )
 }
 
-internal fun ResolvedAuthorizationRequest.toMobileVerifierMetadataProvenance(
-    clientId: String,
-): MobileWalletVerifierMetadataProvenance = when (this) {
-    is ResolvedAuthorizationRequest.WithRequestObject -> {
-        val header = requestObject.decodeJws().header
-        MobileWalletVerifierMetadataProvenance.SignedRequest(
+internal fun ResolvedAuthorizationRequest.toMobileRequestAuthentication(): MobileWalletRequestAuthentication =
+    when (this) {
+        is ResolvedAuthorizationRequest.Plain -> MobileWalletRequestAuthentication.Unauthenticated
+        is ResolvedAuthorizationRequest.UnsignedRequestObject -> MobileWalletRequestAuthentication.Unauthenticated
+        is ResolvedAuthorizationRequest.AuthenticatedRequestObject -> MobileWalletRequestAuthentication.Authenticated(
             compactRequestObject = requestObject,
-            algorithm = requireNotNull(header[JwtHeaderParams.ALGORITHM]?.jsonPrimitive?.contentOrNull),
-            keyId = header[JwtHeaderParams.KEY_ID]?.jsonPrimitive?.contentOrNull,
-            clientIdPrefix = clientId.substringBefore(':'),
+            algorithm = authentication.algorithm,
+            keyId = authentication.keyId,
+            clientIdScheme = authentication.clientId.toMobileClientIdScheme(),
         )
     }
-    is ResolvedAuthorizationRequest.Plain -> MobileWalletVerifierMetadataProvenance.UnsignedRequest
+
+private fun ClientId.toMobileClientIdScheme(): MobileWalletClientIdScheme = when (this) {
+    is PreRegistered -> MobileWalletClientIdScheme.PRE_REGISTERED
+    is RedirectUri -> MobileWalletClientIdScheme.REDIRECT_URI
+    is X509SanDns -> MobileWalletClientIdScheme.X509_SAN_DNS
+    is X509Hash -> MobileWalletClientIdScheme.X509_HASH
+    is DecentralizedIdentifier -> MobileWalletClientIdScheme.DECENTRALIZED_IDENTIFIER
+    is VerifierAttestation -> MobileWalletClientIdScheme.VERIFIER_ATTESTATION
+    is OpenIdFederation -> MobileWalletClientIdScheme.OPENID_FEDERATION
+    else -> error("Unsupported authenticated client identifier type: ${this::class.simpleName}")
 }
 
 private fun WalletPresentFunctionality2.OID4VPErrorCode.toMobileErrorCode(): MobileWalletPresentationErrorCode = when (this) {

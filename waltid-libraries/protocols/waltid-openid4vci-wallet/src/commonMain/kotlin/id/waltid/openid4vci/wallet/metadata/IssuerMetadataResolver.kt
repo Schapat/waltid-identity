@@ -4,9 +4,8 @@ import id.walt.openid4vci.metadata.issuer.CredentialIssuerMetadata
 import id.walt.openid4vci.metadata.issuer.CredentialIssuerMetadataJwt
 import id.walt.openid4vci.metadata.oauth.AuthorizationServerMetadata
 import id.walt.openid4vci.metadata.oidc.OpenIDProviderMetadata
-import id.walt.openid4vci.tokens.jwt.JwtHeaderParams
 import id.walt.openid4vci.tokens.jwt.JwtPayloadClaims
-import id.walt.crypto.utils.JwsUtils.decodeJws
+import id.walt.crypto2.jose.CompactJws
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -18,6 +17,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlin.time.Clock
@@ -27,7 +27,7 @@ private val log = KotlinLogging.logger {}
 /**
  * Resolves unsigned or signed Credential Issuer Metadata from its well-known endpoint.
  *
- * Implements OpenID4VCI 1.0 section 11.2 and signed metadata in section 12.2.3.
+ * Implements OpenID4VCI 1.0 section 12.2 and signed metadata in section 12.2.3.
  * A signed response is accepted only after [metadataTrustResolver] independently establishes
  * both the JWS signature and the signer's authority for the credential issuer.
  *
@@ -47,7 +47,7 @@ class IssuerMetadataResolver(
     }
 
     /**
-     * Resolves credential issuer metadata from the issuer's well-known endpoint.
+     * Resolves credential issuer metadata and retains its signed/unsigned provenance.
      *
      * @param credentialIssuerUrl Credential issuer identifier URL.
      * @return Parsed metadata with explicit unsigned or verified signed provenance.
@@ -151,13 +151,13 @@ class IssuerMetadataResolver(
         compactJwt: String,
         expectedCredentialIssuer: String,
     ): ResolvedCredentialIssuerMetadata.Signed {
-        val decoded = runCatching { compactJwt.decodeJws() }
+        val decoded = runCatching { CompactJws.decodeUnverified(compactJwt) }
             .getOrElse { throw IllegalArgumentException("Invalid signed Credential Issuer Metadata", it) }
-        val algorithm = decoded.header.requiredString(JwtHeaderParams.ALGORITHM, "alg")
+        val algorithm = decoded.algorithm.identifier
         require(!algorithm.equals("none", ignoreCase = true) && !algorithm.startsWith("HS", ignoreCase = true)) {
             "Signed Credential Issuer Metadata must use an asymmetric JWS algorithm"
         }
-        require(decoded.header.requiredString(JwtHeaderParams.TYPE, "typ") == CredentialIssuerMetadataJwt.TYPE) {
+        require(decoded.protectedHeader.requiredString("typ", "typ") == CredentialIssuerMetadataJwt.TYPE) {
             "Signed Credential Issuer Metadata has an invalid typ"
         }
         val signer = requireNotNull(metadataTrustResolver) {
@@ -165,7 +165,9 @@ class IssuerMetadataResolver(
         }.verify(compactJwt, expectedCredentialIssuer)
         require(signer.algorithm == algorithm) { "Trusted signer algorithm does not match JWS alg" }
 
-        val payload = decoded.payload
+        val payload = runCatching {
+            lenientJson.parseToJsonElement(decoded.payload.decodeToString()).jsonObject
+        }.getOrElse { throw IllegalArgumentException("Signed Credential Issuer Metadata payload is not a JSON object", it) }
         val subject = payload.requiredString(JwtPayloadClaims.SUBJECT, "sub")
         payload.optionalString(JwtPayloadClaims.ISSUER, "iss")
         val issuedAt = payload.requiredLong(JwtPayloadClaims.ISSUED_AT, "iat")
@@ -452,5 +454,9 @@ private fun resolutionException(
         }
     }
     val cause = failures.firstNotNullOfOrNull { it.throwable }
-    return Exception(summary, cause)
+    return if (cause is IllegalArgumentException) {
+        IllegalArgumentException(summary, cause)
+    } else {
+        Exception(summary, cause)
+    }
 }

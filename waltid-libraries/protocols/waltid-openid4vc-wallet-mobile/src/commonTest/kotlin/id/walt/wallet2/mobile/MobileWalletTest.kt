@@ -204,13 +204,13 @@ class MobileWalletTest {
 
         assertEquals("verifier2", preview.request.clientId)
         assertEquals(MobileWalletPresentationErrorCode.invalidRequest, preview.errorCode)
-        val provenance = assertIs<MobileWalletVerifierMetadataProvenance.SignedRequest>(
-            preview.request.verifierMetadataProvenance,
+        val authentication = assertIs<MobileWalletRequestAuthentication.Authenticated>(
+            preview.request.requestAuthentication,
         )
-        assertEquals(Url(requestUrl).parameters["request"], provenance.compactRequestObject)
-        assertEquals("EdDSA", provenance.algorithm)
-        assertEquals(verifierKey.getKeyId(), provenance.keyId)
-        assertEquals("verifier2", provenance.clientIdPrefix)
+        assertEquals(Url(requestUrl).parameters["request"], authentication.compactRequestObject)
+        assertEquals("EdDSA", authentication.algorithm)
+        assertEquals(verifierKey.getKeyId(), authentication.keyId)
+        assertEquals(MobileWalletClientIdScheme.PRE_REGISTERED, authentication.clientIdScheme)
     }
 
     @Test
@@ -404,7 +404,7 @@ class MobileWalletTest {
             MobileWalletPresentationRequestContext(
                 clientId = " ",
                 verifierMetadata = null,
-                verifierMetadataProvenance = MobileWalletVerifierMetadataProvenance.UnsignedRequest,
+                requestAuthentication = MobileWalletRequestAuthentication.Unauthenticated,
                 responseUri = null,
                 state = null,
                 nonce = null,
@@ -415,7 +415,7 @@ class MobileWalletTest {
         val context = MobileWalletPresentationRequestContext(
             clientId = "https://verifier.example",
             verifierMetadata = null,
-            verifierMetadataProvenance = MobileWalletVerifierMetadataProvenance.UnsignedRequest,
+            requestAuthentication = MobileWalletRequestAuthentication.Unauthenticated,
             responseUri = null,
             state = null,
             nonce = null,
@@ -566,7 +566,7 @@ class MobileWalletTest {
                     policyUri = null,
                     termsOfServiceUri = null,
                 ),
-                verifierMetadataProvenance = MobileWalletVerifierMetadataProvenance.UnsignedRequest,
+                requestAuthentication = MobileWalletRequestAuthentication.Unauthenticated,
                 responseUri = "https://verifier.example/direct-post",
                 state = "state-1",
                 nonce = "nonce-1",
@@ -1648,7 +1648,7 @@ class MobileWalletTest {
             policyUri = null,
             termsOfServiceUri = null,
         ),
-        verifierMetadataProvenance = MobileWalletVerifierMetadataProvenance.UnsignedRequest,
+        requestAuthentication = MobileWalletRequestAuthentication.Unauthenticated,
         responseUri = "https://verifier.example/direct-post",
         state = null,
         nonce = nonce,

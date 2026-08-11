@@ -139,7 +139,7 @@ final class WalletAPITests: XCTestCase {
             request: .init(
                 clientID: "https://verifier.example",
                 verifierMetadata: testVerifierMetadata,
-                verifierMetadataProvenance: .unsignedRequest,
+                requestAuthentication: .unauthenticated,
                 responseURI: URL(string: "https://verifier.example/direct-post"),
                 state: "state-1",
                 nonce: "nonce-1",
@@ -332,7 +332,7 @@ final class WalletAPITests: XCTestCase {
                 request: .init(
                     clientID: "https://verifier.example",
                     verifierMetadata: testVerifierMetadata,
-                    verifierMetadataProvenance: .unsignedRequest,
+                    requestAuthentication: .unauthenticated,
                     responseURI: nil,
                     state: nil,
                     nonce: "nonce-1",
@@ -389,7 +389,7 @@ final class WalletAPITests: XCTestCase {
         let requestInfo = PresentationRequestContext(
             clientID: "https://verifier.example",
             verifierMetadata: testVerifierMetadata,
-            verifierMetadataProvenance: .unsignedRequest,
+            requestAuthentication: .unauthenticated,
             responseEncryption: .notRequired
         )
         let bridge = FakeWalletCoreBridge()
@@ -793,7 +793,7 @@ private final class FakeWalletCoreBridge: WalletCoreBridge, @unchecked Sendable 
             previewHandle: PresentationPreviewHandle(value: "fake-presentation-preview"),
             request: .init(
                 clientID: "https://verifier.example",
-                verifierMetadataProvenance: .unsignedRequest,
+                requestAuthentication: .unauthenticated,
                 nonce: "nonce-1",
                 responseEncryption: .notRequired,
             ),

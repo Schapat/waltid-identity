@@ -351,7 +351,7 @@ private actor TransactionCodeWalletClient: WalletClient {
                 previewHandle: PresentationPreviewHandle(value: "transaction-code-presentation-preview"),
                 request: PresentationRequestInfo(
                     clientID: "https://verifier.example",
-                    verifierMetadataProvenance: .unsignedRequest,
+                    requestAuthentication: .unauthenticated,
                     nonce: "nonce-1",
                     responseEncryption: .notRequired,
                 ),

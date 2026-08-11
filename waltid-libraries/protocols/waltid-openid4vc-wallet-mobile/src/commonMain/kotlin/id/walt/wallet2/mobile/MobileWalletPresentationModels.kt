@@ -59,7 +59,7 @@ public data class MobileWalletPresentationPreviewHandle(val value: String) {
  *
  * @property clientId Required OpenID4VP `client_id` value identifying the verifier.
  * @property verifierMetadata Typed verifier metadata supplied by the OpenID4VP client, when available.
- * @property verifierMetadataProvenance Whether verifier metadata came from an unsigned request or a signed request object.
+ * @property requestAuthentication Authentication established for the Authorization Request or its Request Object.
  * @property responseUri Verifier response URI to which the wallet would submit the presentation or error, when provided.
  * @property state OpenID4VP state value supplied by the verifier, when provided.
  * @property nonce OpenID4VP nonce value supplied by the verifier, when provided. May be null if the missing nonce is the validation error.
@@ -68,7 +68,7 @@ public data class MobileWalletPresentationPreviewHandle(val value: String) {
 public data class MobileWalletPresentationRequestContext(
     val clientId: String,
     val verifierMetadata: MobileWalletVerifierMetadata?,
-    val verifierMetadataProvenance: MobileWalletVerifierMetadataProvenance,
+    val requestAuthentication: MobileWalletRequestAuthentication,
     val responseUri: String?,
     val state: String?,
     val nonce: String?,
@@ -112,7 +112,7 @@ public data class MobileWalletPresentationCredentialRequirement(
  * Credentials API previews use [MobileWalletDigitalCredentialRequestInfo] instead because
  * unsigned requests intentionally have no trusted request-supplied `client_id`.
  * @property verifierMetadata Typed verifier metadata supplied by the OpenID4VP client, when available.
- * @property verifierMetadataProvenance Whether verifier metadata came from an unsigned request or signed request object.
+ * @property requestAuthentication Authentication established for the Authorization Request or its Request Object.
  * @property responseUri Verifier response URI to which the wallet will submit the presentation, when provided.
  * @property state OpenID4VP state value supplied by the verifier, when provided.
  * @property nonce Required OpenID4VP nonce value supplied by the verifier.
@@ -122,7 +122,7 @@ public data class MobileWalletPresentationCredentialRequirement(
 public data class MobileWalletPresentationRequestInfo(
     val clientId: String,
     val verifierMetadata: MobileWalletVerifierMetadata?,
-    val verifierMetadataProvenance: MobileWalletVerifierMetadataProvenance,
+    val requestAuthentication: MobileWalletRequestAuthentication,
     val responseUri: String?,
     val state: String?,
     val nonce: String,
@@ -135,22 +135,40 @@ public data class MobileWalletPresentationRequestInfo(
     }
 }
 
-/** Provenance of verifier metadata exposed by a presentation preview. */
-public sealed interface MobileWalletVerifierMetadataProvenance {
-    /** Verifier metadata came from an unsigned authorization request. */
-    public data object UnsignedRequest : MobileWalletVerifierMetadataProvenance
+/** Authentication established for an OpenID4VP Authorization Request or Request Object. */
+public sealed interface MobileWalletRequestAuthentication {
+    /** The request was not authenticated by a signed Request Object. */
+    public data object Unauthenticated : MobileWalletRequestAuthentication
 
-    /** Verifier metadata came from the authenticated request object retained by wallet core. */
-    public data class SignedRequest(
-        /** Exact compact request object received from the verifier. */
+    /** The Request Object was authenticated by the OpenID4VP client-ID layer. */
+    public data class Authenticated(
+        /** Exact compact Request Object received from the verifier. */
         public val compactRequestObject: String,
-        /** JWS algorithm carried by the request object. */
+        /** JWS algorithm established by request authentication. */
         public val algorithm: String,
         /** Request-object signing key identifier, when supplied. */
         public val keyId: String?,
-        /** OpenID4VP client identifier prefix used for authentication. */
-        public val clientIdPrefix: String,
-    ) : MobileWalletVerifierMetadataProvenance
+        /** Client identifier scheme established by the authentication layer. */
+        public val clientIdScheme: MobileWalletClientIdScheme,
+    ) : MobileWalletRequestAuthentication
+}
+
+/** Client identifier scheme established while authenticating an OpenID4VP request. */
+public enum class MobileWalletClientIdScheme {
+    /** The verifier is identified through pre-registered metadata. */
+    PRE_REGISTERED,
+    /** The verifier is identified by a redirect URI. */
+    REDIRECT_URI,
+    /** The verifier is identified by an X.509 SAN DNS name. */
+    X509_SAN_DNS,
+    /** The verifier is identified by an X.509 certificate hash. */
+    X509_HASH,
+    /** The verifier is identified by a decentralized identifier. */
+    DECENTRALIZED_IDENTIFIER,
+    /** The verifier is identified by a verifier attestation. */
+    VERIFIER_ATTESTATION,
+    /** The verifier is identified through OpenID Federation. */
+    OPENID_FEDERATION,
 }
 
 /**

@@ -170,7 +170,7 @@ actor MockWalletClient: WalletClient {
                     termsOfServiceURI: "https://verifier.example/terms"
                 )
             },
-            verifierMetadataProvenance: .unsignedRequest,
+            requestAuthentication: .unauthenticated,
             responseURI: URL(string: "https://verifier.example/response"),
             state: "state-123",
             nonce: "nonce-456",
