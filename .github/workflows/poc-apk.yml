@@ -1,0 +1,116 @@
+name: Build wallet demo APK (unofficial)
+
+# Baut die Android-Demo-Wallet aus diesem Fork und haengt sie an ein Release.
+# Grund: das offizielle Release v0.23.1 erzeugt eine unaufloesbare did:key
+# (SPKI-DER statt komprimiertem EC-Punkt) und initialisiert den DID-Resolver
+# fuer did:key nie -> "No resolver for did method: key" beim Praesentieren.
+# Beides ist in main behoben.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version name fuer die APK"
+        required: true
+        default: "main-1192de4"
+      tag:
+        description: "Release-Tag"
+        required: true
+        default: "build-main-1192de4"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build debug APK
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Enable Android build
+        run: |
+          printf '\nenableAndroidBuild=true\n' >> gradle.properties
+          tail -n 3 gradle.properties
+
+      - name: Build debug APK
+        run: >
+          ./gradlew :waltid-applications:waltid-wallet-demo-compose:androidApp:assembleDebug
+          -PappVersionName=${{ inputs.version }}
+          --no-daemon --console=plain --warning-mode=summary --stacktrace
+        env:
+          CI: "true"
+
+      - name: Locate and rename APK
+        id: apk
+        run: |
+          set -euo pipefail
+          apk=$(find waltid-applications/waltid-wallet-demo-compose/androidApp/build/outputs/apk/debug -name '*.apk' | head -n 1)
+          if [ -z "$apk" ]; then
+            echo "::error::No APK found"
+            exit 1
+          fi
+          dest="waltid-wallet-demo-compose-${{ inputs.version }}.apk"
+          cp "$apk" "$dest"
+          sha256sum "$dest" | tee "$dest.sha256"
+          ls -lh "$dest"
+          echo "path=$dest" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: waltid-wallet-demo-compose-apk
+          path: |
+            waltid-wallet-demo-compose-*.apk
+            waltid-wallet-demo-compose-*.apk.sha256
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: "Unofficial build — wallet demo compose (${{ inputs.version }})"
+          body: |
+            **Kein offizielles walt.id-Release.** Eigenbau aus diesem Fork,
+            gebaut von GitHub Actions aus `main` (Commit `1192de4`, 13.08.2026).
+
+            ### Warum
+
+            Das offizielle Release `v0.23.1` kann keine Credentials vorzeigen. In
+            `MobileWallet.registerDidByKey` (v0.23.1, Zeile 246) gehen zwei Dinge schief:
+
+            1. `DidService.minimalInit()` steht nur im `else`-Zweig, also nicht fuer den
+               Default `did:key` — die Resolver-Registry bleibt leer und das Praesentieren
+               scheitert mit `No resolver for did method: key`.
+            2. Der v1-`DidKeyRegistrar` schreibt `key.getPublicKeyRepresentation()` in den
+               Identifier. Auf Android ist das eine 91 Byte lange X.509-SubjectPublicKeyInfo
+               statt des vorgeschriebenen 33-Byte-Punkts, also eine DID, die kein
+               spezifikationskonformer Resolver aufloesen kann (`did:key:zWmu9...`).
+
+            In `main` erzeugt `Crypto2DidKeyRegistrar` den komprimierten Punkt aus dem JWK
+            und `bootstrap()` ruft `minimalInit()` immer auf. Dieser Build enthaelt das.
+
+            ### Hinweise
+
+            - Debug-signiert. Vor der Installation die alte App **deinstallieren** — anderer
+              Signaturschluessel, und die alte, kaputte DID laege sonst weiter in der lokalen
+              Datenbank. Das loescht alle Credentials in der Wallet.
+            - Entwicklungsstand aus `main`, kein getestetes Release.
+            - Quelle und Lizenz: https://github.com/walt-id/waltid-identity (Apache-2.0)
+          files: |
+            waltid-wallet-demo-compose-*.apk
+            waltid-wallet-demo-compose-*.apk.sha256
+          fail_on_unmatched_files: true
+          make_latest: true
