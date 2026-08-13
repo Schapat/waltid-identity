@@ -4,6 +4,8 @@ set -euo pipefail
 phase="${1:?Android device test phase is required}"
 emulator_api_level="34"
 emulator_profile=""
+emulator_avd_name=""
+emulator_test_options=""
 
 case "$phase" in
   wallet-mobile)
@@ -27,6 +29,8 @@ case "$phase" in
     dc_api_test_classes="id.walt.walletdemo.compose.android.DigitalCredentialSharingE2ETest"
     script="ANDROID_TEST_CLASS=$dc_api_test_classes ./waltid-identity/.github/scripts/mobile-ci/run-android-dc-api-compose-tests.sh"
     emulator_options="-no-window -gpu auto -noaudio -no-boot-anim -camera-back none -memory 4096 -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator"
+    emulator_test_options="$emulator_options -no-snapshot-save"
+    emulator_avd_name="dc-api-api37-pixel7-playstore"
     report_paths="waltid-identity/waltid-applications/waltid-wallet-demo-compose/androidApp/build/outputs/androidTest-results/**/*.xml"
     artifact_paths=$'waltid-identity/waltid-applications/waltid-wallet-demo-compose/androidApp/build/reports/androidTests/**\nwaltid-identity/waltid-applications/waltid-wallet-demo-compose/androidApp/build/outputs/androidTest-results/**'
     emulator_api_level="37.0"
@@ -46,11 +50,17 @@ case "$phase" in
     ;;
 esac
 
+if [[ -z "$emulator_test_options" ]]; then
+  emulator_test_options="$emulator_options"
+fi
+
 {
   echo "script=$script"
   echo "emulator_api_level=$emulator_api_level"
   echo "emulator_profile=$emulator_profile"
+  echo "emulator_avd_name=$emulator_avd_name"
   echo "emulator_options=$emulator_options"
+  echo "emulator_test_options=$emulator_test_options"
   echo "emulator_target=$emulator_target"
   echo "report_paths<<ANDROID_TEST_REPORT_PATHS"
   printf '%s\n' "$report_paths"

@@ -5,7 +5,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 identity_dir="$(cd "$script_dir/../../.." && pwd -P)"
 source "$script_dir/prepare-android-dc-api-device.sh"
 
-prepare_android_dc_api_device
+# The AVD preparation job owns the bounded GMS update wait. Test jobs validate the
+# restored baseline and fail before Gradle if the cached device is stale or unhealthy.
+validate_android_dc_api_device
 
 instrumentation_args=()
 if [[ -n "${ANDROID_TEST_CLASS:-}" ]]; then
@@ -24,6 +26,7 @@ set -e
 
 postflight_status=0
 assert_android_dc_api_device_unchanged || postflight_status=$?
+assert_android_dc_api_launcher_health || postflight_status=$?
 
 if (( test_status != 0 )); then
   exit "$test_status"
