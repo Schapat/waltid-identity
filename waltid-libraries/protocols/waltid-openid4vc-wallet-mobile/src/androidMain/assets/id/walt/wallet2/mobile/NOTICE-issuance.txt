@@ -1,7 +1,7 @@
 issuance.wasm - third-party notices
 ===========================================
 
-issuance.wasm in this directory is our build, compiled from unmodified sources from Google's
+issuance.wasm in this directory is our build, compiled from Google's
 Android identity-samples project. Google publishes no binary for those sources, so this is not a
 Google-published artifact; it is a WebAssembly binary compiled from Rust and statically linked against
 the Rust standard library and several crates, so many components are compiled into the single object.
@@ -12,14 +12,16 @@ Provenance
 
   Upstream repository  https://github.com/android/identity-samples
   Branch               wasm
-  Commit               5d966fc4913cac93f3b3b11e11bdd44d3e0b5c9e
+  Commit               d5a8adc1b84061a4e3a9581cdaf867df89fb1f19
   Upstream path        CredentialProvider/wasm/matcher-rs
   Binary entry point  CredentialProvider/wasm/matcher-rs/src/bin/issuance.rs
-  Source modifications none
+  Source modifications one narrow issuance.rs compatibility fallback: retain d5 package_info
+                       handling and pass the resolved package name, or "wallet" when absent, as
+                       the non-blank entry title required by older GMSCore runtimes
   Built artifact       target/wasm32-unknown-unknown/release/issuance.wasm (built here, not
                        published upstream)
-  Size                 91794 bytes
-  SHA-256              07c610ab120949ae656ddbff99ec24ba6300d6baa4736cc59ecaa6285e730b46
+  Size                 92332 bytes
+  SHA-256              188bb17241c8d38893cf4685e7710be1bb4c8a25284cbef13cec2321a1ac6592
   Matcher sources      CredentialProvider/wasm/matcher-rs/src/ (Rust 2024, nightly -Z build-std)
   Toolchain            rustc 1.99.0-nightly (12c36e253 2026-08-10), target wasm32-unknown-unknown
 
@@ -27,6 +29,11 @@ identity-samples publishes no NOTICE file at that commit, so there is none to pr
 matcher-rs sources carry no per-file copyright header either; the repository is Apache-2.0 and its
 other files are headed "Copyright 2024 The Android Open Source Project" or "Copyright 2024 Google LLC".
 See OPENID4VCI-MATCHER.md for the build command and why the binary is vendored.
+
+This upstream revision includes the package_info compatibility fix: for older Credential Manager
+Wasm ABI versions, the matcher uses the registered application icon and name when adding the legacy
+StringId entry. The local compatibility fallback keeps the entry title non-blank for GMSCore
+26.29.32, whose RegistryRuntime otherwise traps with `Unreachable` while matching this request.
 
 Components compiled into the binary
 -----------------------------------

@@ -51,7 +51,7 @@ class AndroidVendoredMatcherTest {
             .use { it.readBytes() }
 
         assertEquals(
-            "07c610ab120949ae656ddbff99ec24ba6300d6baa4736cc59ecaa6285e730b46",
+            "188bb17241c8d38893cf4685e7710be1bb4c8a25284cbef13cec2321a1ac6592",
             MessageDigest.getInstance("SHA-256").digest(matcher).joinToString("") { "%02x".format(it) },
             "vendored OpenID4VCI matcher content changed; see OPENID4VCI-MATCHER.md before repinning",
         )
@@ -76,7 +76,7 @@ class AndroidVendoredMatcherTest {
 
         assertTrue(notice.contains("android/identity-samples"), "notice lost its provenance")
         assertTrue(notice.contains("issuance.wasm"), "notice lost the asset name")
-        assertTrue(notice.contains("5d966fc4913cac93f3b3b11e11bdd44d3e0b5c9e"), "notice lost the pinned commit")
+        assertTrue(notice.contains("d5a8adc1b84061a4e3a9581cdaf867df89fb1f19"), "notice lost the pinned commit")
         assertTrue(notice.contains("src/bin/issuance.rs"), "notice lost the Rust issuance source path")
         assertTrue(notice.contains("Apache License"), "notice lost the Apache-2.0 text")
         assertTrue(notice.contains("LLVM Exception"), "notice lost the compiler-builtins exception")
