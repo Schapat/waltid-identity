@@ -22,6 +22,13 @@ import id.walt.walletdemo.compose.android.WalletComposeE2EHelper.setTextByTag
 import id.walt.walletdemo.compose.android.WalletComposeE2EHelper.waitForResource
 import java.util.regex.Pattern
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
@@ -45,6 +52,46 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalDigitalCredentialApi::class)
 class DigitalCredentialIssuanceE2ETest {
+
+    /**
+     * Mirrors the request captured from portal2 while keeping the issuer and network path identical
+     * to the passing control test. The only changed input is the portal's enrichment of the inline
+     * offer with issuer and authorization-server metadata.
+     *
+     * This is the regression guard for the Google issuance matcher/runtime boundary: on the current
+     * revision the wallet candidate is not surfaced and [selectWalletCreateCandidate] fails with
+     * the same "no app found" symptom seen from the portal. It should turn green once that
+     * request-shape mismatch is fixed.
+     */
+    @Test
+    fun acceptsPortalShapedOfferThroughCreateCredential() = runBlocking {
+        val fixture = start() ?: return@runBlocking
+        val scenario = DemoTestBackend.presentationScenarios.first { it.id == "iso-mdl" }
+        val portalOffer = createPortalShapedOffer(scenario)
+
+        DigitalCredentialTestIssuer.reset(
+            requestJson = """
+                {"requests":[{"protocol":"openid4vci-v1","data":${portalOffer.enrichedOfferJson}}]}
+            """.trimIndent(),
+        )
+        fixture.device.wait(Until.gone(By.pkg(CREDENTIAL_SELECTOR_PACKAGE).depth(0)), UI_ELEMENT_TIMEOUT)
+        fixture.context.startActivity(
+            Intent(fixture.context, DigitalCredentialTestIssuerActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+
+        fixture.device.selectWalletCreateCandidate()
+        fixture.device.confirmSelectorIfAsked()
+
+        assertNotNull(
+            "Wallet create offer review did not open for the portal-shaped offer",
+            waitForResource(fixture.device, "wallet.offerReview", UI_ELEMENT_TIMEOUT),
+        )
+        clickByTag(fixture.device, "wallet.offerAcceptButton")
+
+        DemoTestBackend.waitForIssuerIssuanceSuccess(portalOffer.offerId)
+        fixture.assertStoredCredentialIs(scenario)
+    }
 
     @Test
     fun acceptsPreAuthorizedOfferThroughCreateCredential() = runBlocking {
@@ -271,6 +318,59 @@ class DigitalCredentialIssuanceE2ETest {
             context.packageManager.getPackageInfo("com.google.android.gms", 0)
             true
         }.getOrDefault(false)
+
+    private suspend fun createPortalShapedOffer(
+        scenario: DemoTestBackend.CredentialScenario,
+    ): PortalOffer {
+        val generatedOffer = DemoTestBackend.createOffer(scenario, inlineOffer = true)
+        val offerId = requireNotNull(generatedOffer.offerId) { "Issuer did not return an offer session id" }
+        val offerUrl = generatedOffer.offerUrl
+        val offerJson = requireNotNull(Uri.parse(offerUrl).getQueryParameter("credential_offer")) {
+            "Demo offer was not inline (portal DC API requires BY_VALUE): $offerUrl"
+        }
+        val offerObject = Json.parseToJsonElement(offerJson).jsonObject
+        val enrichedOffer = buildJsonObject {
+            offerObject.forEach { (key, value) -> put(key, value) }
+            // These are the two additional top-level objects portal2 passes to Chrome. The
+            // representative mdoc configuration keeps the request shape meaningful while all
+            // endpoint values remain placeholders, so this test has no metadata-server dependency.
+            putJsonObject("credential_issuer_metadata") {
+                put("credential_issuer", "https://issuer.example/openid4vci")
+                put("credential_endpoint", "https://issuer.example/openid4vci/credential")
+                putJsonObject("credential_configurations_supported") {
+                    putJsonObject("org.iso.18013.5.1.mDL") {
+                        put("format", "mso_mdoc")
+                        put("doctype", "org.iso.18013.5.1.mDL")
+                        putJsonArray("credential_signing_alg_values_supported") {
+                            add(JsonPrimitive(-7))
+                            add(JsonPrimitive(-9))
+                        }
+                        putJsonArray("cryptographic_binding_methods_supported") {
+                            add(JsonPrimitive("cose_key"))
+                        }
+                        putJsonObject("proof_types_supported") {
+                            putJsonObject("jwt") {
+                                putJsonArray("proof_signing_alg_values_supported") {
+                                    add(JsonPrimitive("ES256"))
+                                    add(JsonPrimitive("EdDSA"))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            putJsonObject("authorization_server_metadata") {
+                put("issuer", "https://issuer.example/openid4vci")
+                put("token_endpoint", "https://issuer.example/openid4vci/token")
+            }
+        }
+        return PortalOffer(offerId, enrichedOffer.toString())
+    }
+
+    private data class PortalOffer(
+        val offerId: String,
+        val enrichedOfferJson: String,
+    )
 
     private companion object {
         /** Owns `CredentialSelectorActivity`, i.e. the picker window these tests drive. */
