@@ -54,9 +54,30 @@ import org.junit.runner.RunWith
 class DigitalCredentialIssuanceE2ETest {
 
     /**
+     * Positive half of the one-field bisection: keep portal2's metadata enrichment but omit
+     * credential_signing_alg_values_supported from the mdoc configuration.
+     */
+    @Test
+    fun portalMetadataWithoutNumericMdocSigningAlgorithmsSurfacesWallet() = runBlocking {
+        val fixture = start() ?: return@runBlocking
+        val scenario = DemoTestBackend.presentationScenarios.first { it.id == "iso-mdl" }
+        val portalOffer = createPortalShapedOffer(
+            scenario,
+            includeNumericSigningAlgorithms = false,
+        )
+
+        launchPortalOffer(fixture, portalOffer)
+        fixture.device.selectWalletCreateCandidate()
+        fixture.device.confirmSelectorIfAsked()
+        fixture.device.pressBack()
+        fixture.device.wait(Until.gone(By.pkg(CREDENTIAL_SELECTOR_PACKAGE).depth(0)), UI_ELEMENT_TIMEOUT)
+    }
+
+    /**
      * Mirrors the request captured from portal2 while keeping the issuer and network path identical
      * to the passing control test. The only changed input is the portal's enrichment of the inline
-     * offer with issuer and authorization-server metadata.
+     * offer with issuer and authorization-server metadata, including numeric COSE signing
+     * algorithms in credential_issuer_metadata.
      *
      * This is the regression guard for the Google issuance matcher/runtime boundary: on the current
      * revision the wallet candidate is not surfaced and [selectWalletCreateCandidate] fails with
@@ -69,16 +90,7 @@ class DigitalCredentialIssuanceE2ETest {
         val scenario = DemoTestBackend.presentationScenarios.first { it.id == "iso-mdl" }
         val portalOffer = createPortalShapedOffer(scenario)
 
-        DigitalCredentialTestIssuer.reset(
-            requestJson = """
-                {"requests":[{"protocol":"openid4vci-v1","data":${portalOffer.enrichedOfferJson}}]}
-            """.trimIndent(),
-        )
-        fixture.device.wait(Until.gone(By.pkg(CREDENTIAL_SELECTOR_PACKAGE).depth(0)), UI_ELEMENT_TIMEOUT)
-        fixture.context.startActivity(
-            Intent(fixture.context, DigitalCredentialTestIssuerActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
+        launchPortalOffer(fixture, portalOffer)
 
         fixture.device.selectWalletCreateCandidate()
         fixture.device.confirmSelectorIfAsked()
@@ -190,6 +202,19 @@ class DigitalCredentialIssuanceE2ETest {
         val target = requireNotNull(candidate)
         (target.clickableAncestorOrSelf() ?: target).click()
         waitForIdle()
+    }
+
+    private fun launchPortalOffer(fixture: Fixture, portalOffer: PortalOffer) {
+        DigitalCredentialTestIssuer.reset(
+            requestJson = """
+                {"requests":[{"protocol":"openid4vci-v1","data":${portalOffer.enrichedOfferJson}}]}
+            """.trimIndent(),
+        )
+        fixture.device.wait(Until.gone(By.pkg(CREDENTIAL_SELECTOR_PACKAGE).depth(0)), UI_ELEMENT_TIMEOUT)
+        fixture.context.startActivity(
+            Intent(fixture.context, DigitalCredentialTestIssuerActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     /** Some builds add a confirmation step between candidate selection and the provider. */
@@ -321,6 +346,7 @@ class DigitalCredentialIssuanceE2ETest {
 
     private suspend fun createPortalShapedOffer(
         scenario: DemoTestBackend.CredentialScenario,
+        includeNumericSigningAlgorithms: Boolean = true,
     ): PortalOffer {
         val generatedOffer = DemoTestBackend.createOffer(scenario, inlineOffer = true)
         val offerId = requireNotNull(generatedOffer.offerId) { "Issuer did not return an offer session id" }
@@ -341,9 +367,11 @@ class DigitalCredentialIssuanceE2ETest {
                     putJsonObject("org.iso.18013.5.1.mDL") {
                         put("format", "mso_mdoc")
                         put("doctype", "org.iso.18013.5.1.mDL")
-                        putJsonArray("credential_signing_alg_values_supported") {
-                            add(JsonPrimitive(-7))
-                            add(JsonPrimitive(-9))
+                        if (includeNumericSigningAlgorithms) {
+                            putJsonArray("credential_signing_alg_values_supported") {
+                                add(JsonPrimitive(-7))
+                                add(JsonPrimitive(-9))
+                            }
                         }
                         putJsonArray("cryptographic_binding_methods_supported") {
                             add(JsonPrimitive("cose_key"))
