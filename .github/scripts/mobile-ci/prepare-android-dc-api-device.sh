@@ -91,7 +91,7 @@ log_android_dc_api_device_identity() {
   avd="$(adb_cmd emu avd name 2>/dev/null | tr -d '\r' | head -n 1 || true)"
   emulator_version="<unavailable>"
   if [[ -n "${ANDROID_HOME:-}" && -x "$ANDROID_HOME/emulator/emulator" ]]; then
-    emulator_version="$($ANDROID_HOME/emulator/emulator -version 2>&1 | head -n 1 || true)"
+    emulator_version="$($ANDROID_HOME/emulator/emulator -noaudio -version 2>&1 | head -n 1 || true)"
   fi
   home="$(home_activity || true)"
   foreground="$(current_foreground_package || true)"
