@@ -21,7 +21,7 @@ adb_shell() {
 }
 
 gms_details() {
-  adb_shell dumpsys package com.google.android.gms 2>/dev/null
+  adb_shell dumpsys package com.google.android.gms 2>/dev/null || true
 }
 
 gms_version_name() {
@@ -33,7 +33,9 @@ gms_version_code() {
 }
 
 gms_pid() {
-  adb_shell pidof com.google.android.gms | tr '\n' ' ' | xargs
+  adb_shell pidof com.google.android.gms 2>/dev/null |
+    tr '\n' ' ' |
+    xargs || true
 }
 
 version_at_least() {

@@ -9,6 +9,7 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.GetDigitalCredentialOption
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -42,13 +43,19 @@ class DigitalCredentialTestVerifierActivity : ComponentActivity() {
         }
 
         val operation = lifecycleScope.launch {
-            val result = runCatching {
-                CredentialManager.create(this@DigitalCredentialTestVerifierActivity).getCredential(
-                    context = this@DigitalCredentialTestVerifierActivity,
-                    request = GetCredentialRequest(
-                        credentialOptions = listOf(GetDigitalCredentialOption(requestJson)),
+            val result = try {
+                Result.success(
+                    CredentialManager.create(this@DigitalCredentialTestVerifierActivity).getCredential(
+                        context = this@DigitalCredentialTestVerifierActivity,
+                        request = GetCredentialRequest(
+                            credentialOptions = listOf(GetDigitalCredentialOption(requestJson)),
+                        ),
                     ),
                 )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Result.failure(e)
             }
             result.exceptionOrNull()?.let { Log.e("DigitalCredentialE2E", "Credential Manager request failed", it) }
             DigitalCredentialTestVerifier.complete(requestId, result)
@@ -92,25 +99,38 @@ internal class DigitalCredentialRequestHandle internal constructor(
 
     internal fun completedResult(): Result<GetCredentialResponse>? = completedResult
 
-    internal fun cancel() {
+    @Synchronized
+    internal fun abandonRequest(): Boolean {
         abandonRequested = true
         operation?.cancel()
         callerActivity?.let { activity ->
             activity.runOnUiThread { activity.finish() }
         }
         deferred.cancel()
+        if (callerActivity == null) {
+            destroyed.complete(Unit)
+            return true
+        }
+        return false
     }
 
-    internal fun attachCaller(activity: DigitalCredentialTestVerifierActivity) {
+    @Synchronized
+    internal fun attachCaller(activity: DigitalCredentialTestVerifierActivity): Boolean {
+        if (abandonRequested) {
+            destroyed.complete(Unit)
+            return false
+        }
         callerActivity = activity
-        if (abandonRequested) activity.runOnUiThread { activity.finish() }
+        return true
     }
 
+    @Synchronized
     internal fun attachOperation(operation: Job) {
         this.operation = operation
         if (abandonRequested) operation.cancel()
     }
 
+    @Synchronized
     internal fun markDestroyed() {
         callerActivity = null
         operation = null
@@ -139,18 +159,25 @@ internal object DigitalCredentialTestVerifier {
     }
 
     fun attach(requestId: String, activity: DigitalCredentialTestVerifierActivity): DigitalCredentialRequestHandle? =
-        requests[requestId]?.also { it.attachCaller(activity) }
+        requests.computeIfPresent(requestId) { _, request ->
+            request.takeIf { it.attachCaller(activity) }
+        }
 
     fun complete(requestId: String, value: Result<GetCredentialResponse>) {
         requests[requestId]?.complete(value)
     }
 
     fun abandon(requestId: String) {
-        requests[requestId]?.cancel()
+        requests.computeIfPresent(requestId) { _, request ->
+            request.takeIf { !it.abandonRequest() }
+        }
     }
 
     fun onActivityDestroyed(requestId: String) {
-        requests.remove(requestId)?.markDestroyed()
+        requests.computeIfPresent(requestId) { _, request ->
+            request.markDestroyed()
+            null
+        }
     }
 
     fun activeRequestCount(): Int = requests.size
