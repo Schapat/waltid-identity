@@ -83,15 +83,21 @@ home_activity() {
 }
 
 log_android_dc_api_device_identity() {
-  local sdk release build fingerprint avd emulator_version home foreground gms_state
+  local sdk release build fingerprint avd emulator_version emulator_package_xml home foreground gms_state
   sdk="$(adb_shell getprop ro.build.version.sdk || true)"
   release="$(adb_shell getprop ro.build.version.release || true)"
   build="$(adb_shell getprop ro.build.id || true)"
   fingerprint="$(adb_shell getprop ro.build.fingerprint || true)"
   avd="$(adb_cmd emu avd name 2>/dev/null | tr -d '\r' | head -n 1 || true)"
   emulator_version="<unavailable>"
-  if [[ -n "${ANDROID_HOME:-}" && -x "$ANDROID_HOME/emulator/emulator" ]]; then
-    emulator_version="$($ANDROID_HOME/emulator/emulator -noaudio -version 2>&1 | head -n 1 || true)"
+  emulator_package_xml="${ANDROID_HOME:-}/emulator/package.xml"
+  if [[ -f "$emulator_package_xml" ]]; then
+    emulator_version="$(sed -n -E 's:.*<revision><major>([^<]+)</major><minor>([^<]+)</minor><micro>([^<]+)</micro></revision>.*:\1.\2.\3:p' "$emulator_package_xml" | head -n 1)"
+    if [[ -n "$emulator_version" ]]; then
+      emulator_version="package-revision=$emulator_version"
+    else
+      emulator_version="<unavailable>"
+    fi
   fi
   home="$(home_activity || true)"
   foreground="$(current_foreground_package || true)"
