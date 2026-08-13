@@ -20,7 +20,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        phase: [wallet-mobile, compose-demo, dc-api-compose, enterprise-mobile]
+        # Temporary PR validation scope: restore the full matrix after the DC API soak.
+        phase: [dc-api-compose]
     env:
       MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
       MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}

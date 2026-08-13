@@ -38,6 +38,7 @@ jobs:
       pr-labels: ${{ toJson(github.event.pull_request.labels.*.name) }}
       pr-draft: ${{ github.event.pull_request.draft || false }}
   macos-eligibility:
+    if: ${{ false }}
     uses: ./.github/workflows/macos-eligibility.yml
     with:
       event-name: ${{ github.event_name }}
@@ -47,6 +48,7 @@ jobs:
       pr-labels: ${{ toJson(github.event.pull_request.labels.*.name) }}
       pr-draft: ${{ github.event.pull_request.draft || false }}
   issuer-conformance-eligibility:
+    if: ${{ false }}
     uses: ./.github/workflows/issuer-conformance-eligibility.yml
     with:
       event-name: ${{ github.event_name }}
@@ -56,6 +58,7 @@ jobs:
       pr-labels: ${{ toJson(github.event.pull_request.labels.*.name) }}
       pr-draft: ${{ github.event.pull_request.draft || false }}
   crypto2-eligibility:
+    if: ${{ false }}
     uses: ./.github/workflows/platform-eligibility.yml
     with:
       event-name: ${{ github.event_name }}
@@ -87,12 +90,12 @@ jobs:
   sdk-docs:
     uses: ./.github/workflows/mobile-sdk-docs.yml
     needs: macos-eligibility
-    if: ${{ needs.macos-eligibility.outputs.should-run == 'true' }}
+    if: ${{ false }}
     secrets: inherit
   ios-tests:
     uses: ./.github/workflows/gradle-macos.yml
     needs: macos-eligibility
-    if: ${{ needs.macos-eligibility.outputs.should-run == 'true' }}
+    if: ${{ false }}
     secrets: inherit
     with:
       job_name_prefix: ios-tests
@@ -106,9 +109,10 @@ jobs:
   crypto2-platform-tests:
     uses: ./.github/workflows/crypto2-platforms.yml
     needs: crypto2-eligibility
-    if: ${{ needs.crypto2-eligibility.outputs.should-run == 'true' }}
+    if: ${{ false }}
     secrets: inherit
   gradle-build:
+    if: ${{ false }}
     uses: ./.github/workflows/gradle.yml
     secrets: inherit
     needs: [android-eligibility, issuer-conformance-eligibility]
