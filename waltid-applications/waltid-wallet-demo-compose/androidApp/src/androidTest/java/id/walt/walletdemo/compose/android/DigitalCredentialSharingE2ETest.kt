@@ -108,7 +108,7 @@ class DigitalCredentialSharingE2ETest {
     fun cleanupTest() {
         val fixture = fixture()
         cleanupCredentialManagerInteraction(fixture)
-        activeRequests.forEach(DigitalCredentialRequestHandle::abandon)
+        activeRequests.forEach { request -> runCatching { request.abandon() } }
         activeRequests.clear()
         cleanupCredentialManagerInteraction(fixture)
         assertEquals(
