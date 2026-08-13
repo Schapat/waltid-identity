@@ -41,7 +41,8 @@ suspend fun createAndroidDemoMobileWallet(
                 preferredLocales = LocaleList.getDefault().let { locales ->
                     List(locales.size()) { index -> locales[index].toLanguageTag() }
                 },
-            )
+            ),
+            DemoClientIdTrust.configuration,
         ),
         transactionDataProfilesWarning = transactionDataProfiles.warning,
     )

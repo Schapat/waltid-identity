@@ -237,6 +237,7 @@ object AuthorizationRequestResolver {
             unsignedRequestObjectPolicy = unsignedRequestObjectPolicy,
             trustConfiguration = trustConfiguration,
             expectedRequestObjectAudience = expectedRequestObjectAudience,
+            requireOuterClientId = true,
         )
 
         return ResolvedAuthorizationRequest.Plain(
@@ -347,6 +348,7 @@ object AuthorizationRequestResolver {
                 expectedWalletNonce = response.walletNonce,
                 trustConfiguration = trustConfiguration,
                 expectedRequestObjectAudience = expectedRequestObjectAudience,
+                requireOuterClientId = true,
             )
             contentType.match(ContentType.Application.Json) -> {
                 if (requestObjectPolicy == UnsignedRequestObjectPolicy.REQUIRE_SIGNED) {
@@ -364,6 +366,28 @@ object AuthorizationRequestResolver {
         }
     }
 
+    /**
+     * Authenticates a compact Request Object that was not fetched from `request_uri`.
+     *
+     * Digital Credentials API signed requests carry only the JWT in `data.request`, with no outer
+     * `client_id` query parameter. HTTP JAR still requires the outer `client_id` to match.
+     */
+    suspend fun resolveInlineRequestObject(
+        requestObject: String,
+        trustConfiguration: ClientIdTrustConfiguration,
+        expectedRequestObjectAudience: String = DEFAULT_REQUEST_OBJECT_AUDIENCE,
+        requireOuterClientId: Boolean = false,
+        outerClientId: String? = null,
+    ): ResolvedAuthorizationRequest = resolveFromRequestObject(
+        requestObject = requestObject,
+        outerClientId = outerClientId,
+        enforceFinalRequestObject = true,
+        unsignedRequestObjectPolicy = UnsignedRequestObjectPolicy.REQUIRE_SIGNED,
+        trustConfiguration = trustConfiguration,
+        expectedRequestObjectAudience = expectedRequestObjectAudience,
+        requireOuterClientId = requireOuterClientId,
+    )
+
     private suspend fun resolveFromRequestObject(
         requestObject: String,
         outerClientId: String?,
@@ -372,6 +396,7 @@ object AuthorizationRequestResolver {
         expectedWalletNonce: String? = null,
         trustConfiguration: ClientIdTrustConfiguration = ClientIdTrustConfiguration(),
         expectedRequestObjectAudience: String = DEFAULT_REQUEST_OBJECT_AUDIENCE,
+        requireOuterClientId: Boolean = true,
     ): ResolvedAuthorizationRequest {
         log.trace { "Resolving AuthorizationRequest via inline request object" }
         require(requestObject.isJwt()) { "AuthorizationRequest object must be a JWT" }
@@ -381,10 +406,17 @@ object AuthorizationRequestResolver {
             require(authReqJws.header["typ"]?.jsonPrimitive?.contentOrNull == REQUEST_OBJECT_TYPE) {
                 "Authorization Request Object typ must be '$REQUEST_OBJECT_TYPE'"
             }
-            requireMatchingClientId(
-                outerClientId = outerClientId,
-                innerClientId = authReqJws.payload["client_id"]?.jsonPrimitive?.contentOrNull,
-            )
+            val innerClientId = authReqJws.payload["client_id"]?.jsonPrimitive?.contentOrNull
+            if (requireOuterClientId) {
+                requireMatchingClientId(
+                    outerClientId = outerClientId,
+                    innerClientId = innerClientId,
+                )
+            } else {
+                require(!innerClientId.isNullOrBlank()) {
+                    "Authorization Request Object client_id is required"
+                }
+            }
             validateCommonRequestObjectClaims(
                 payload = authReqJws.payload,
                 expectedAudience = expectedRequestObjectAudience,

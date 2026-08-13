@@ -34,7 +34,8 @@ fun createIosDemoWallet(
                     preferredLocales = NSLocale.preferredLanguages.mapNotNull { it as? String },
                     crossProcessAccess = crossProcessAccess,
                     onDigitalCredentialRegistryChanged = onDigitalCredentialRegistryChanged,
-                )
+                ),
+                DemoClientIdTrust.configuration,
             ),
             warning = transactionDataProfiles.warning,
         )
