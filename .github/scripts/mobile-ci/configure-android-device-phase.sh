@@ -24,7 +24,7 @@ case "$phase" in
     # Dedicated Play Store lane; these tests require Google Play services. Every Digital Credentials
     # test class must be named here: other phases only skip them, and a skip reads as green, so a
     # class left out of this list runs nowhere without failing anything.
-    dc_api_test_classes="id.walt.walletdemo.compose.android.DigitalCredentialSharingE2ETest"
+    dc_api_test_classes="id.walt.walletdemo.compose.android.DigitalCredentialSharingE2ETest,id.walt.walletdemo.compose.android.DigitalCredentialIssuanceE2ETest"
     script="ANDROID_TEST_CLASS=$dc_api_test_classes ./waltid-identity/.github/scripts/mobile-ci/run-android-compose-demo-tests.sh"
     emulator_options="-no-window -gpu auto -noaudio -no-boot-anim -camera-back none -memory 4096 -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator"
     report_paths="waltid-identity/waltid-applications/waltid-wallet-demo-compose/androidApp/build/outputs/androidTest-results/**/*.xml"
