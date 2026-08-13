@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.util.Base64
 import androidx.credentials.DigitalCredential
 import androidx.credentials.ExperimentalDigitalCredentialApi
+import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -45,8 +46,10 @@ import id.walt.walletdemo.compose.android.WalletComposeE2EHelper.clickByTag
 import id.walt.walletdemo.compose.android.WalletComposeE2EHelper.foregroundWindowSnapshot
 import id.walt.walletdemo.compose.android.WalletComposeE2EHelper.waitForResource
 import id.walt.walletdemo.compose.ui.WalletDemoSharingReviewTestTags
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -94,12 +97,7 @@ class DigitalCredentialSharingE2ETest {
     @Before
     fun prepareTest() {
         val fixture = fixture()
-        cleanupCredentialManagerInteraction(fixture)
-        assertEquals(
-            "A previous verifier request leaked into this test",
-            0,
-            DigitalCredentialTestVerifier.activeRequestCount(),
-        )
+        assertCredentialManagerIdle(fixture)
         activeRequests.clear()
         runBlocking { assertSharedCredentialStateUnchanged() }
     }
@@ -107,10 +105,14 @@ class DigitalCredentialSharingE2ETest {
     @After
     fun cleanupTest() {
         val fixture = fixture()
-        cleanupCredentialManagerInteraction(fixture)
         activeRequests.forEach { request -> runCatching { request.abandon() } }
+        runBlocking {
+            activeRequests.forEach { request ->
+                withTimeout(CLEANUP_TIMEOUT) { request.awaitSettled() }
+            }
+        }
         activeRequests.clear()
-        cleanupCredentialManagerInteraction(fixture)
+        settleCredentialManagerInteraction(fixture)
         assertEquals(
             "Verifier request registry was not empty after test cleanup",
             0,
@@ -553,7 +555,7 @@ class DigitalCredentialSharingE2ETest {
         fixture.enterProviderReview(request, candidateText = MDL_DOC_TYPE)
         clickByTag(fixture.device, WalletDemoSharingReviewTestTags.CancelButton)
 
-        val outcome = withTimeout(CREDENTIAL_OPERATION_TIMEOUT) { request.await() }
+        val outcome = fixture.awaitCancellationOutcome(request)
         val error = outcome.exceptionOrNull()
         assertNotNull("Cancel produced a credential instead of a cancellation: ${outcome.getOrNull()}", error)
         assertTrue(
@@ -620,7 +622,7 @@ class DigitalCredentialSharingE2ETest {
     }
 
     private fun Fixture.startCredentialRequest(requestJson: String): DigitalCredentialRequestHandle {
-        cleanupCredentialManagerInteraction(this)
+        assertCredentialManagerIdle(this)
         val request = DigitalCredentialTestVerifier.prepare()
         activeRequests += request
         context.startActivity(
@@ -700,6 +702,32 @@ class DigitalCredentialSharingE2ETest {
         )
     }
 
+    private suspend fun Fixture.awaitCancellationOutcome(
+        request: DigitalCredentialRequestHandle,
+    ): Result<GetCredentialResponse> {
+        val completed = withTimeoutOrNull(CANCELLATION_TRANSITION_TIMEOUT) {
+            while (!request.isComplete) {
+                if (!walletReviewVisible() && device.credentialManagerWindowVisible()) {
+                    fail(
+                        "Credential Manager selector reappeared after provider Cancel without " +
+                            "resolving the caller request.\n" +
+                            pickerDiagnostic(request, MDL_DOC_TYPE, candidateSelected = true),
+                    )
+                }
+                delay(CLEANUP_POLL_MILLIS)
+            }
+            true
+        }
+        if (completed != true) {
+            fail(
+                "Provider Cancel did not resolve the caller request within " +
+                    "$CANCELLATION_TRANSITION_TIMEOUT ms.\n" +
+                    pickerDiagnostic(request, MDL_DOC_TYPE, candidateSelected = true),
+            )
+        }
+        return request.await()
+    }
+
     /**
      * Drives an unsupported request until Credential Manager shows its empty state. A candidate is a
      * failure, and the request is only allowed to complete after the GMS-scoped Close action.
@@ -748,15 +776,44 @@ class DigitalCredentialSharingE2ETest {
         )
     }
 
-    private fun cleanupCredentialManagerInteraction(fixture: Fixture) {
-        repeat(CLEANUP_ATTEMPTS) {
-            val walletReviewVisible = fixture.walletReviewVisible()
-            val selectorVisible = fixture.device.credentialManagerWindowVisible()
-            if (!walletReviewVisible && !selectorVisible) return
-            fixture.device.pressBack()
+    private fun assertCredentialManagerIdle(fixture: Fixture) {
+        val deadline = System.currentTimeMillis() + CLEANUP_TIMEOUT
+        while (System.currentTimeMillis() < deadline) {
+            if (!fixture.walletReviewVisible() &&
+                !fixture.device.credentialManagerWindowVisible() &&
+                DigitalCredentialTestVerifier.activeRequestCount() == 0
+            ) {
+                return
+            }
             Thread.sleep(CLEANUP_POLL_MILLIS)
         }
+        fail("Credential Manager was not idle before the test started.\n${interactionDiagnostic(fixture)}")
     }
+
+    private fun settleCredentialManagerInteraction(fixture: Fixture) {
+        val deadline = System.currentTimeMillis() + CLEANUP_TIMEOUT
+        while (System.currentTimeMillis() < deadline) {
+            val walletReviewVisible = fixture.walletReviewVisible()
+            val selectorVisible = fixture.device.credentialManagerWindowVisible()
+            if (!walletReviewVisible &&
+                !selectorVisible &&
+                DigitalCredentialTestVerifier.activeRequestCount() == 0
+            ) {
+                return
+            }
+            if (walletReviewVisible || selectorVisible) fixture.device.pressBack()
+            Thread.sleep(CLEANUP_POLL_MILLIS)
+        }
+        fail("Credential Manager did not settle after test cleanup.\n${interactionDiagnostic(fixture)}")
+    }
+
+    private fun interactionDiagnostic(fixture: Fixture): String = """
+        activeRequestCount=${DigitalCredentialTestVerifier.activeRequestCount()}
+        currentPackage=${fixture.device.currentPackageName}
+        selectorVisible=${fixture.device.credentialManagerWindowVisible()}
+        walletReviewVisible=${fixture.walletReviewVisible()}
+        foreground=${foregroundWindowSnapshot(fixture.device)}
+    """.trimIndent()
 
     private fun DigitalCredentialRequestHandle.completedResultDescription(): String {
         val result = completedResult()
@@ -1171,7 +1228,8 @@ class DigitalCredentialSharingE2ETest {
         /** Dismisses Credential Manager's own "Your info wasn't found" state, which has no candidates. */
         private const val CREDENTIAL_SELECTOR_CLOSE_LABEL = "Close"
         private const val CANDIDATE_CLICK_ATTEMPTS = 3
-        private const val CLEANUP_ATTEMPTS = 4
+        private const val CLEANUP_TIMEOUT = 10_000L
+        private const val CANCELLATION_TRANSITION_TIMEOUT = 10_000L
         private const val CLEANUP_POLL_MILLIS = 200L
         private const val MAX_ACCESSIBILITY_NODES = 80
 
